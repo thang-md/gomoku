@@ -1,0 +1,70 @@
+* {
+    font-family: 'Lato', 'Helvetica Neue', Helvetica, sans-serif;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0 auto;
+    max-width: 1000px;
+    overscroll-behavior-y: contain;
+    background: #f4f7fb;
+}
+
+.before-game {
+    position: relative;
+    padding: 20px;
+    margin: 30px auto;
+    max-width: 880px;
+}
+
+.before-game .bg-white {
+    position: relative;
+}
+
+.before-game h2 {
+    margin-bottom: 8px;
+}
+
+#online_count_container {
+    position: absolute;
+    top: 22px;
+    right: 22px;
+}
+
+.container-button {
+    margin: 16px 0;
+}
+
+.search-box {
+    max-width: 640px;
+}
+
+#tbRooms {
+    margin: 0 auto;
+}
+
+.table th,
+.table td {
+    vertical-align: middle;
+}
+
+.table .btn {
+    min-width: 40px;
+}
+
+@media (max-width: 768px) {
+    .before-game {
+        padding: 16px;
+    }
+
+    #online_count_container {
+        position: static;
+        margin-top: 16px;
+    }
+
+    .search-box {
+        width: 100%;
+    }
+}

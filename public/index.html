@@ -1,9 +1,79 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>Gomoku</title>
+
+    <!-- JQuery -->
+    <script src="lib/jquery-3.4.1.min.js"></script>
+    <!-- Sweet alert -->
+    <script src="lib/sweetalert2.all.min.js"></script>
+    <!-- Socket.io -->
+    <script src="socket.io/socket.io.js"></script>
+    <!-- FontAwsome -->
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css">
+    <!-- Bootstrap -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <script src="https://unpkg.com/popper.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+
+    <link rel="stylesheet" href="css/style2.css">
+    <script src="js/setup_socket2.js"></script>
+    <script src="js/main2.js"></script>
 </head>
-<body>
-    <h1>K-on!</h1>
+
+<body class="bg-light">
+    <div class="before-game text-center">
+        <div class="bg-white rounded shadow-sm px-4 py-5 mb-4 position-relative">
+            <h2>Gomoku</h2>
+            <h5 id="online_count_container" data-toggle="tooltip" title="Số người đang online">
+                <span class="badge badge-danger" id="online_count">
+                    <i class="fas fa-globe-americas"></i>
+                </span>
+            </h5>
+            <h4>
+                <i class="fas fa-user-secret"></i>
+                <span id="player_name">Chưa đăng nhập</span>
+            </h4>
+        </div>
+
+        <div class="container-button mb-3">
+            <button class="btn btn-primary btn-lg" id="btnTaoPhong">Tạo phòng</button>
+        </div>
+
+        <div class="input-group mb-4 mx-auto search-box">
+            <div class="input-group-prepend">
+                <span class="input-group-text bg-white border-right-0">
+                    <i class="fas fa-search"></i>
+                </span>
+            </div>
+            <input class="form-control border-left-0" id="inpSearch" type="text" placeholder="Tìm phòng, chủ phòng, thông điệp..">
+        </div>
+
+        <table class="table table-striped table-hover table-sm" id="tbRooms">
+            <thead class="thead-dark">
+                <tr>
+                    <th data-toggle="tooltip" title="Tên phòng"><i class="fas fa-hand-peace"></i></th>
+                    <th data-toggle="tooltip" title="Chủ phòng"><i class="fas fa-user-circle"></i></th>
+                    <th data-toggle="tooltip" title="Thông điệp"><i class="fas fa-comment-alt"></i></th>
+                    <th data-toggle="tooltip" title="Số người trong phòng"><i class="fas fa-users"></i></th>
+                    <th data-toggle="tooltip" title="Chức năng"><i class="fas fa-cog"></i></th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="5">
+                        <div class="alert alert-info mb-0">
+                            Đang tải danh sách phòng...
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
 </body>
+
 </html>
