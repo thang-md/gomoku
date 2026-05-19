@@ -12,12 +12,12 @@ $(document).ready(function() {
         });
     });
 
-    $(document).on("click", "#btnTaoPhong", function() {
-        Swal.fire({
-            title: 'Chức năng Tạo phòng',
-            text: 'W8 chỉ có UI lobby. Chờ phần server/logic để tạo phòng.',
-            icon: 'info'
-        });
+    $(document).on('click', '#btnLeaveRoom', function() {
+        xacNhanRoiPhong();
+    });
+
+    $(document).on('click', '#btnTaoPhong', function() {
+        taoPhong();
     });
 });
 
@@ -38,16 +38,22 @@ function init() {
             socket.emit('client_send_new_connect', name, function(isSuccess, errorText) {
                 if (isSuccess) {
                     setupEventSocket();
+
                     player_name = name;
                     localStorage.setItem('caro-player-name', player_name);
-                    $('#player_name').text(player_name);
+
+                    $('#player_name').append(document.createTextNode(player_name));
+                    openGame(false);
+
                     getOnlineCount();
                     getListRooms();
+
                     Swal.close();
                 } else {
                     Swal.showValidationMessage(errorText);
                 }
             });
+
             return false;
         }
     });

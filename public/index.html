@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Gomoku</title>
+    <title>Caro Online — W10 p5 + Game Mount</title>
 
     <!-- JQuery -->
     <script src="lib/jquery-3.4.1.min.js"></script>
@@ -20,15 +20,21 @@
     <script src="https://unpkg.com/popper.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
 
-    <link rel="stylesheet" href="css/style2.css">
-    <script src="js/setup_socket2.js"></script>
-    <script src="js/main2.js"></script>
+    <link rel="stylesheet" href="css/style4.css">
+
+    <!-- p5js + Caro game -->
+    <script src="lib/p5.min.js"></script>
+    <script src="js/caro.js"></script>
+
+    <!-- App scripts -->
+    <script src="js/setup_socket4.js"></script>
+    <script src="js/main4.js"></script>
 </head>
 
 <body class="bg-light">
     <div class="before-game text-center">
-        <div class="bg-white rounded shadow-sm px-4 py-5 mb-4 position-relative">
-            <h2>Gomoku</h2>
+        <div class="bg-light rounded p-4 mb-4 shadow-sm position-relative">
+            <h2>Caro Online</h2>
             <h5 id="online_count_container" data-toggle="tooltip" title="Số người đang online">
                 <span class="badge badge-danger" id="online_count">
                     <i class="fas fa-globe-americas"></i>
@@ -36,7 +42,7 @@
             </h5>
             <h4>
                 <i class="fas fa-user-secret"></i>
-                <span id="player_name">Chưa đăng nhập</span>
+                <span id="player_name"></span>
             </h4>
         </div>
 
@@ -66,13 +72,35 @@
             <tbody>
                 <tr>
                     <td colspan="5">
-                        <div class="alert alert-info mb-0">
-                            Đang tải danh sách phòng...
-                        </div>
+                        <div class="alert alert-info mb-0">Đang tải danh sách phòng...</div>
                     </td>
                 </tr>
             </tbody>
         </table>
+    </div>
+
+    <div class="game">
+        <div class="control-game mb-3">
+            <button id="btnNewGame" data-toggle="tooltip" title="Ván mới">
+                <i class="far fa-sticky-note"></i>
+            </button>
+            <button id="btnUndoGame" data-toggle="tooltip" title="Đánh lại">
+                <i class="fas fa-undo-alt"></i>
+            </button>
+            <button id="btnFocusPreMove" data-toggle="tooltip" title="Tới vị trí quân cờ vừa đánh">
+                <i class="fas fa-bullseye"></i>
+            </button>
+            <button id="btnSwitchTheme" data-toggle="tooltip" title="Chuyển giao diện">
+                <i class="far fa-eye"></i>
+            </button>
+            <button id="btnLeaveRoom" data-toggle="tooltip" title="Rời phòng">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </div>
+        <div class="turn mb-3">
+            Lượt của <span id="turnName"></span>
+        </div>
+        <div id="cnv"></div>
     </div>
 </body>
 
