@@ -1,4 +1,3 @@
-/* Copy of style3 with minimal changes for W10 */
 * {
     font-family: 'Lato', 'Helvetica Neue', Helvetica, sans-serif;
     margin: 0;
@@ -14,125 +13,60 @@ body {
     margin: 0 auto;
     max-width: 1000px;
     overscroll-behavior-y: contain;
-    background: #f4f7fb;
+}
+
+canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: -1;
 }
 
 .before-game {
     position: relative;
-    padding: 20px;
-    margin: 30px auto;
-    max-width: 880px;
 }
 
-.before-game .bg-light {
-    position: relative;
-    padding: 18px 22px;
-    border-radius: 14px;
+.game {
+    width: 100%;
+    display: none;
+}
+
+.control-game,
+.turn {
+    padding: 5px;
+    text-align: center;
+    background-color: #0009;
+}
+
+.control-game button {
+    font-size: 24px;
+    /* background-color: #222; */
+    padding: 5px 10px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    z-index: 100
+}
+
+.turn span{
+    font-weight: bold;
+    color: #ff09;
+}
+
+#tbRooms {
+    margin: 10px auto;
 }
 
 #online_count_container {
     position: absolute;
-    top: 18px;
-    right: 18px;
+    top: 5px;
+    right: 10px;
+}
+
+#btnTaoPhong {
+    box-sizing: border-box;
 }
 
 .container-button {
-    margin: 16px 0;
-}
-
-.search-box {
-    max-width: 640px;
-}
-
-#tbRooms {
-    margin: 0 auto;
-}
-
-.table th,
-.table td {
-    vertical-align: middle;
-}
-
-.btn-group .btn {
-    min-width: 40px;
-}
-
-.game {
-    display: none;
-    width: 100%;
-    max-width: 960px;
-    margin: 0 auto 40px;
-    padding: 10px;
-}
-
-.control-game {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 8px;
-    background: #ffffffee;
-    border-radius: 14px;
-    padding: 12px;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.control-game button {
-    width: 52px;
-    height: 52px;
-    border: none;
-    border-radius: 12px;
-    background: #2f4d91;
-    color: white;
-    font-size: 18px;
-    cursor: pointer;
-    transition: transform 0.18s ease, background-color 0.18s ease;
-}
-
-.control-game button:hover {
-    transform: translateY(-2px);
-    background: #1f3572;
-}
-
-.turn {
-    text-align: center;
-    padding: 12px;
-    background-color: #00000014;
-    border-radius: 12px;
-    font-weight: 600;
-}
-
-.turn span {
-    color: #d91616;
-}
-
-#cnv {
-    min-height: 420px;
-    background: #ffffff;
-    border-radius: 18px;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-@media (max-width: 768px) {
-    .before-game {
-        padding: 14px;
-    }
-
-    #online_count_container {
-        position: static;
-        margin-top: 12px;
-    }
-
-    .search-box {
-        width: 100%;
-    }
-
-    .control-game {
-        gap: 6px;
-    }
-
-    .control-game button {
-        width: 46px;
-        height: 46px;
-        font-size: 16px;
-    }
+    margin: 10px 0;
 }
