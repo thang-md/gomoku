@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GOMOKU — Đăng nhập</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css">
+  <link rel="stylesheet" href="css/login.css">
+</head>
+<body>
+  <div class="login-bg"></div>
+  <div class="login-wrapper">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="logo-icon">♟</div>
+        <h1>GOMOKU</h1>
+        <p>Trò chơi cờ chiến thuật</p>
+      </div>
+
+      <!-- Tabs -->
+      <div class="auth-tabs">
+        <button class="tab-btn active" id="tab-login" onclick="switchTab('login')">
+          <i class="fas fa-sign-in-alt"></i> Đăng nhập
+        </button>
+        <button class="tab-btn" id="tab-register" onclick="switchTab('register')">
+          <i class="fas fa-user-plus"></i> Đăng ký
+        </button>
+      </div>
+
+      <!-- Login Form -->
+      <div class="auth-form active" id="form-login">
+        <div class="form-group">
+          <label><i class="fas fa-user"></i> Tên đăng nhập</label>
+          <input type="text" id="login-username" class="form-control" placeholder="Nhập tên đăng nhập..." autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Mật khẩu</label>
+          <div class="input-password">
+            <input type="password" id="login-password" class="form-control" placeholder="Nhập mật khẩu..." autocomplete="current-password">
+            <button type="button" class="btn-toggle-pass" onclick="togglePass('login-password', this)">
+              <i class="far fa-eye"></i>
+            </button>
+          </div>
+        </div>
+        <div class="alert-message" id="login-error"></div>
+        <button class="btn-auth" id="btn-login" onclick="doLogin()">
+          <i class="fas fa-sign-in-alt"></i> Đăng nhập
+        </button>
+      </div>
+
+      <!-- Register Form -->
+      <div class="auth-form" id="form-register">
+        <div class="form-group">
+          <label><i class="fas fa-user"></i> Tên đăng nhập</label>
+          <input type="text" id="reg-username" class="form-control" placeholder="Tối thiểu 3 ký tự..." autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Mật khẩu</label>
+          <div class="input-password">
+            <input type="password" id="reg-password" class="form-control" placeholder="Tối thiểu 6 ký tự..." autocomplete="new-password">
+            <button type="button" class="btn-toggle-pass" onclick="togglePass('reg-password', this)">
+              <i class="far fa-eye"></i>
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Xác nhận mật khẩu</label>
+          <div class="input-password">
+            <input type="password" id="reg-confirm" class="form-control" placeholder="Nhập lại mật khẩu..." autocomplete="new-password">
+            <button type="button" class="btn-toggle-pass" onclick="togglePass('reg-confirm', this)">
+              <i class="far fa-eye"></i>
+            </button>
+          </div>
+        </div>
+        <div class="alert-message" id="reg-error"></div>
+        <button class="btn-auth" id="btn-register" onclick="doRegister()">
+          <i class="fas fa-user-plus"></i> Tạo tài khoản
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Nếu đã đăng nhập rồi thì tự chuyển sang game
+    fetch('/api/me').then(r => r.json()).then(data => {
+      if (data.loggedIn) window.location.href = '/';
+    });
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
+      document.getElementById('form-' + tab).classList.add('active');
+    }
+
+    function togglePass(inputId, btn) {
+      const input = document.getElementById(inputId);
+      const icon = btn.querySelector('i');
+      if (input.type === 'password') {
+        input.type = 'text';
+        icon.className = 'far fa-eye-slash';
+      } else {
+        input.type = 'password';
+        icon.className = 'far fa-eye';
+      }
+    }
+
+    function showError(id, msg) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.style.display = msg ? 'block' : 'none';
+    }
+
+    async function doLogin() {
+      const btn = document.getElementById('btn-login');
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+      showError('login-error', '');
+      if (!username || !password) return showError('login-error', 'Vui lòng nhập đầy đủ thông tin.');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang đăng nhập...';
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.location.href = '/';
+        } else {
+          showError('login-error', data.message);
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Đăng nhập';
+        }
+      } catch {
+        showError('login-error', 'Lỗi kết nối server.');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Đăng nhập';
+      }
+    }
+
+    async function doRegister() {
+      const btn = document.getElementById('btn-register');
+      const username = document.getElementById('reg-username').value.trim();
+      const password = document.getElementById('reg-password').value;
+      const confirm = document.getElementById('reg-confirm').value;
+      showError('reg-error', '');
+      if (!username || !password || !confirm) return showError('reg-error', 'Vui lòng nhập đầy đủ thông tin.');
+      if (password !== confirm) return showError('reg-error', 'Mật khẩu xác nhận không khớp.');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang tạo tài khoản...';
+      try {
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.location.href = '/';
+        } else {
+          showError('reg-error', data.message);
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-user-plus"></i> Tạo tài khoản';
+        }
+      } catch {
+        showError('reg-error', 'Lỗi kết nối server.');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-user-plus"></i> Tạo tài khoản';
+      }
+    }
+
+    // Enter để submit
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const loginActive = document.getElementById('form-login').classList.contains('active');
+        if (loginActive) doLogin(); else doRegister();
+      }
+    });
+  </script>
+</body>
+</html>

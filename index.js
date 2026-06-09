@@ -1,14 +1,125 @@
+// =================== CONFIG ===================
+require('dotenv').config();
+
 var port = process.env.PORT || 3000;
-var express = require("express");
+var MONGODB_URI = process.env.MONGODB_URI;
+var SESSION_SECRET = process.env.SESSION_SECRET || 'gomoku_secret_key_change_in_production';
+
+if (!MONGODB_URI) {
+  throw new Error('MONGODB_URI is not configured. Set it in .env or environment variables.');
+}
+
+var express = require('express');
 var app = express();
-app.use(express.static("public"));
-// app.set("view engine", "ejs");
-// app.set("views", "./views");
+var session = require('express-session');
+var MongoStore = require('connect-mongo');
+var bcrypt = require('bcrypt');
+var mongoose = require('mongoose');
 
-var server = require("http").Server(app);
-var io = require("socket.io")(server);
-server.listen(port);
+// =================== MONGODB ===================
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch(err => console.error('❌ MongoDB error:', err));
 
+var UserSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true, trim: true },
+  password: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+var UserModel = mongoose.model('User', UserSchema);
+
+// =================== MIDDLEWARE ===================
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(session({
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  store: MongoStore.create({ mongoUrl: MONGODB_URI }),
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 } // 7 ngày
+}));
+
+// Phục vụ file tĩnh (public) — chỉ sau khi có session
+app.use(express.static('public'));
+
+// =================== AUTH ROUTES ===================
+
+// Middleware bảo vệ route
+function requireAuth(req, res, next) {
+  if (req.session && req.session.user) return next();
+  res.redirect('/login.html');
+}
+
+// API: Đăng ký
+app.post('/api/register', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password)
+      return res.json({ success: false, message: 'Vui lòng nhập đầy đủ thông tin.' });
+    if (username.length < 3)
+      return res.json({ success: false, message: 'Tên đăng nhập phải có ít nhất 3 ký tự.' });
+    if (password.length < 6)
+      return res.json({ success: false, message: 'Mật khẩu phải có ít nhất 6 ký tự.' });
+
+    const exists = await UserModel.findOne({ username });
+    if (exists)
+      return res.json({ success: false, message: 'Tên đăng nhập đã tồn tại.' });
+
+    const hash = await bcrypt.hash(password, 10);
+    const user = new UserModel({ username, password: hash });
+    await user.save();
+
+    req.session.user = { id: user._id.toString(), username: user.username };
+    res.json({ success: true, username: user.username });
+  } catch (err) {
+    console.error(err);
+    res.json({ success: false, message: 'Lỗi server.' });
+  }
+});
+
+// API: Đăng nhập
+app.post('/api/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password)
+      return res.json({ success: false, message: 'Vui lòng nhập đầy đủ thông tin.' });
+
+    const user = await UserModel.findOne({ username });
+    if (!user)
+      return res.json({ success: false, message: 'Tên đăng nhập không tồn tại.' });
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match)
+      return res.json({ success: false, message: 'Mật khẩu không đúng.' });
+
+    req.session.user = { id: user._id.toString(), username: user.username };
+    res.json({ success: true, username: user.username });
+  } catch (err) {
+    console.error(err);
+    res.json({ success: false, message: 'Lỗi server.' });
+  }
+});
+
+// API: Kiểm tra session (dùng khi reload trang)
+app.get('/api/me', (req, res) => {
+  if (req.session && req.session.user) {
+    res.json({ loggedIn: true, username: req.session.user.username });
+  } else {
+    res.json({ loggedIn: false });
+  }
+});
+
+// API: Đăng xuất
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.json({ success: true });
+  });
+});
+
+// =================== SERVER ===================
+var server = require('http').Server(app);
+var io = require('socket.io')(server);
+server.listen(port, () => console.log(`🚀 Server chạy tại http://localhost:${port}`));
 // ========================== Classes =====================
 function arrayRemove(arr, value) {
 
