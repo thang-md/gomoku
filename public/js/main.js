@@ -4,8 +4,8 @@ $(document).ready(function() {
 
     setupMyChatBox();
 
-    // https://carop5js.herokuapp.com/
-    connect('https://carop5js.herokuapp.com/');
+    // connect to same origin (use local server when running locally)
+    connect();
     setTooltip();
     init();
 

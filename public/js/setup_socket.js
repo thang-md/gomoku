@@ -173,7 +173,7 @@ function showListRooms(listRooms) {
             </button>`;
     }
 
-    if (d.owner.name == player_name) {
+    if (d.owner == player_name) {
       btnXoa =
         `<button class="btn-sm btn-danger" onclick="xoaPhong('` +
         d.name +
@@ -188,7 +188,7 @@ function showListRooms(listRooms) {
       d.name +
       `</b></td>
             <td>` +
-      d.owner.name +
+      d.owner +
       `</td>
             <td><i>` +
       d.preview +
@@ -315,37 +315,39 @@ function checkVaoPhong(name) {
     cancelButtonText: "Trở về",
     reverseButtons: true,
     preConfirm: pass => {
-      socket.emit("client_required_join_room", name, pass, function(isSuccess) {
-        if (isSuccess) {
-          vaoPhong(name);
-          Swal.close();
-        } else {
-          Swal.showValidationMessage("Sai mật khẩu");
-        }
+      return new Promise(resolve => {
+        socket.emit("client_required_join_room", name, pass, function(isSuccess, errorText) {
+          if (isSuccess) {
+            resolve(pass);
+          } else {
+            resolve(false);
+            Swal.showValidationMessage(errorText || "Sai mật khẩu");
+          }
+        });
       });
-      return false;
+    }
+  }).then(result => {
+    if (result.value) {
+      vaoPhong(name);
     }
   });
 }
 
 function vaoPhong(name) {
-  socket.emit("client_join_room", name, function(isSuccess) {
+  socket.emit("client_join_room", name, function(isSuccess, errorText) {
     if (isSuccess) {
       if (_p5Instance) _p5Instance.remove();
 
       _p5Instance = new p5(caro, "cnv");
       openGame(true);
 
-      for (let r of Rooms) {
-        if (r.name == name) {
-          currentRoom = r;
-        }
-      }
+      currentRoom = Rooms.find(r => r.name === name) || { name };
+      $("#btns-choose-conv button[data-conv=\"conv-room\"]").click();
     } else {
       Swal.fire({
         type: "error",
         title: "Lỗi",
-        text: "Không thể vào phòng " + name
+        text: errorText || "Không thể vào phòng " + name
       });
     }
   });
