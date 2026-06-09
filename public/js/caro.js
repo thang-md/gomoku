@@ -1,11 +1,22 @@
 let isSetupSocketEventCaro = false;
+const caroSocketEvents = [
+    'server_send_clicked',
+    'server_send_history',
+    'server_send_want_undo',
+    'server_send_undo',
+    'server_send_deny_undo',
+    'server_send_want_reset',
+    'server_send_reset',
+    'server_send_deny_reset',
+    'server_send_turn',
+    'server_send_win'
+];
 
 let caro = function(p) {
     let game, theme, timeClick = 0,
         tableSize = 60;
 
     p.setup = function() {
-        if (!isSetupSocketEventCaro) setupSocketEvent();
         setupBtnEvent();
 
         p.createCanvas(p.windowWidth, p.windowHeight);
@@ -15,10 +26,14 @@ let caro = function(p) {
 
         game = new CaroTable(tableSize, tableSize, 30);
         game.moveToCenterPage();
+        setupSocketEvent();
+        document.getElementById('turnName').innerHTML = ' đang chờ đối thủ';
 
         socket.emit('client_required_history_game', function(dataHistory) {
             if (dataHistory) {
+                let currentTurn = game.turn;
                 game.reset();
+                game.turn = currentTurn;
                 game.history = dataHistory;
                 game.drawGrid();
                 game.drawData();
@@ -49,7 +64,10 @@ let caro = function(p) {
     p.mouseReleased = function(e) {
         if (e.target.matches('canvas'))
             if (p.millis() - timeClick < 200) {
-                game.clicked();
+                // Chỉ cho phép người chơi (không phải viewer) click
+                if (currentRoomRole !== "viewer") {
+                    game.clicked();
+                }
             }
     }
 
@@ -119,6 +137,14 @@ let caro = function(p) {
     }
 
     function setupSocketEvent() {
+        for (let eventName of caroSocketEvents) {
+            if (socket.off) {
+                socket.off(eventName);
+            } else if (socket.removeAllListeners) {
+                socket.removeAllListeners(eventName);
+            }
+        }
+
         // playing
         socket.on('server_send_clicked', function(data) {
             game.history.push(data);
@@ -126,7 +152,9 @@ let caro = function(p) {
             game.focusToPreMove();
         })
         socket.on('server_send_history', function(data) {
+            let currentTurn = game.turn;
             game.reset();
+            game.turn = currentTurn;
             game.history = data;
             game.drawGrid();
             game.drawData();
@@ -209,13 +237,18 @@ let caro = function(p) {
                     }
                 });
         })
-        socket.on('server_send_reset', function() {
+        socket.on('server_send_reset', function(data) {
             game.reset();
-            Swal({
-                title: "Tạo thành công",
-                text: "Đã tạo ván mới.",
-                type: "success",
-            });
+            document.getElementById('turnName').innerHTML = ' đang chờ đối thủ';
+            
+            // Chỉ hiển thị dialog nếu reset do request (não auto)
+            if (!data || !data.auto) {
+                Swal({
+                    title: "Tạo thành công",
+                    text: "Đã tạo ván mới.",
+                    type: "success",
+                });
+            }
         })
         socket.on('server_send_deny_reset', function(name) {
             Swal({
@@ -228,6 +261,29 @@ let caro = function(p) {
         // check lượt, check win
         socket.on('server_send_turn', function(data) {
             let spanTurn = document.getElementById('turnName');
+            
+            // Nếu đang chờ đối thủ (opponent left hoặc chưa đủ 2 người)
+            if (data == 'waiting') {
+                game.turn = false;
+                game.board = []; // Reset game board
+                spanTurn.innerHTML = ' Chờ đối thủ...';
+                return;
+            }
+            
+            // Nếu khách xem nhận được 'viewer' thì hiển thị đang xem
+            if (data == 'viewer') {
+                game.turn = false;
+                spanTurn.innerHTML = ' xem trận đấu';
+                return;
+            }
+            
+            // Khách xem luôn ở trạng thái chờ (hiển thị lượt của người chơi)
+            if (currentRoomRole == 'viewer') {
+                game.turn = false;
+                spanTurn.innerHTML = ' xem ' + (data == 'off' ? 'chủ phòng' : 'đối thủ') + ' chơi: ' + game.getNextChar();
+                return;
+            }
+            
             if (data == 'off') {
                 game.turn = false;
                 spanTurn.innerHTML = ' đối thủ: ' + game.getNextChar();
@@ -237,14 +293,27 @@ let caro = function(p) {
             }
         })
         socket.on('server_send_win', function(data) {
-            if (socket.id == data.id) {
+            game.turn = false;
+
+            // Khách xem chỉ thấy thông báo ai thắng mà không có cảm xúc
+            if (currentRoomRole == 'viewer') {
                 Swal({
+                    type: "info",
+                    title: data.name + " đã thắng!",
+                    confirmButtonText: 'Đóng',
+                    showCancelButton: false
+                });
+                return;
+            }
+
+            if (socket.id == data.id) {
+                showGameResult({
                     title: 'Chúc mừng!',
                     text: "Bạn đã thắng ván chơi này.",
                     type: "info"
                 });
             } else {
-                Swal({
+                showGameResult({
                     title: 'Bạn thua!',
                     text: data.name + ' đã thắng ván chơi này',
                     type: "warning"
@@ -253,6 +322,32 @@ let caro = function(p) {
         })
 
         isSetupSocketEventCaro = true;
+    }
+
+    function showGameResult(result) {
+        window.isGameResultDialogOpen = true;
+
+        Swal({
+            allowEscapeKey: false,
+            allowOutsideClick: false,
+            title: result.title,
+            text: result.text,
+            type: result.type,
+            confirmButtonText: 'Rời phòng',
+            cancelButtonText: 'Ở lại phòng',
+            showCancelButton: true,
+            reverseButtons: true
+        }).then((choice) => {
+            window.isGameResultDialogOpen = false;
+
+            if (choice.value) {
+                roiPhong();
+            } else {
+                socket.emit('client_clear_finished_game');
+                game.reset();
+                document.getElementById('turnName').innerHTML = ' đang chờ đối thủ';
+            }
+        });
     }
 
     // --------------- Themes for caro game -------------
@@ -341,7 +436,7 @@ let caro = function(p) {
 
             this.target = p.createVector(0, 0);
             this.focusTarget = false;
-            this.turn = true;
+            this.turn = false;
 
             this.drawGrid();
             this.resetData();
@@ -369,6 +464,7 @@ let caro = function(p) {
 
         reset() {
             this.focusTarget = false;
+            this.turn = false;
             this.history = [];
             this.createTable(this.rows, this.cols, this.cellSize);
             this.moveToCenterPage();

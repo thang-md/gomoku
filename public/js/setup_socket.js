@@ -64,7 +64,7 @@ function setupEventSocket() {
       addMessage("Bạn đã vào phòng " + roomName, "Server", true, "#5d59");
     } else {
       addMessage(
-        playerName + " đã vào phòng " + roomName,
+        playerName + " đã vào phòng. Chủ phòng sẽ phê duyệt vai trò...",
         "Server",
         true,
         "#5958"
@@ -92,9 +92,18 @@ function setupEventSocket() {
 
   // message
   socket.on("server_send_message", function(data) {
-    addMessage(data.mes, data.from, true);
-    if (data.id != socket.id && chatIsClosing()) {
-      flashTitle(data.from + " đã nhắn tin..", 1000);
+    // If not from self, add to chat UI
+    if (data.id != socket.id) {
+      let conversation = $('.conversation.active').attr('id');
+      if (conversation) {
+        addMessage_MCB(conversation, {
+          name: data.from,
+          avatar: "https://avatarhub.edu.vn/wp-content/uploads/2025/12/avatar-mac-dinh-cua-fb-4.jpg"
+        }, data.mes);
+      }
+      if (chatIsClosing()) {
+        flashTitle(data.from + " đã nhắn tin..", 1000);
+      }
     }
   });
 
@@ -111,14 +120,130 @@ function setupEventSocket() {
       title: reasonText
     });
   });
+
+  // opponent left
+  socket.on("server_message_opponent_left", function(message) {
+    addMessage(message, "Server", true, "#d559");
+    // Disable game controls khi opponent rời
+    if (currentRoomRole === 'opponent' || currentRoomRole === 'owner') {
+      $("#btnNewGame, #btnUndoGame, #btnFocusPreMove").prop("disabled", true);
+    }
+  });
+
+  socket.on("server_send_room_role", function(data) {
+    applyRoomRole(data);
+  });
+
+  socket.on("server_owner_changed", function(data) {
+    if (currentRoom && currentRoom.name == data.room_name) {
+      currentRoom.owner = data.owner;
+    }
+
+    if (data.owner == player_name) {
+      addMessage("Bạn đã trở thành chủ phòng. Bạn có thể phân quyền cho những người vào phòng.", "Server", true, "#9955");
+    } else {
+      addMessage(data.owner + " hiện là chủ phòng mới.", "Server", true, "#5599");
+    }
+  });
+
+  socket.on("server_room_role_changed", function(data) {
+    if (data.role == "opponent") {
+      addMessage(
+        data.name + " đã trở thành đối thủ chơi cùng bạn.",
+        "Server",
+        true,
+        "#5958"
+      );
+    } else {
+      addMessage(
+        data.name + " sẽ xem trận đấu của bạn (khách mời).",
+        "Server",
+        true,
+        "#5958"
+      );
+    }
+  });
+
+  socket.on("server_request_assign_role", function(data) {
+    chooseRoomRoleForUser(data);
+  });
 }
 
 let Rooms = [];
 let currentRoom = null;
+let currentRoomRole = "lobby";
 
 function refreshData() {
   getOnlineCount();
   getListRooms();
+}
+
+function applyRoomRole(data) {
+  currentRoomRole = data.role;
+
+  if (currentRoom && currentRoom.name == data.room_name) {
+    currentRoom.owner = data.owner;
+  }
+
+  let isViewer = data.role == "viewer";
+  
+  // Ẩn/Hiện các nút game dựa trên vai trò
+  if (isViewer) {
+    $("#btnNewGame, #btnUndoGame, #btnFocusPreMove, #btnSwitchTheme").hide();
+    $("#input-message, #btn-send-message, #btn-emoji-picker").prop("disabled", true);
+    $("#turnName").text(" Khách xem");
+  } else {
+    $("#btnNewGame, #btnUndoGame, #btnFocusPreMove, #btnSwitchTheme").show();
+    $("#input-message, #btn-send-message, #btn-emoji-picker").prop("disabled", false);
+    
+    if (data.role == "owner") {
+      addMessage("Bạn là chủ phòng.", "Server", true, "#5599");
+    } else if (data.role == "opponent") {
+      addMessage("Bạn là đối thủ trong ván này.", "Server", true, "#5599");
+    }
+  }
+}
+
+function chooseRoomRoleForUser(data) {
+  if (currentRoomRole != "owner") return;
+
+  let config = {
+    allowEscapeKey: false,
+    allowOutsideClick: false,
+    type: "question",
+    title: data.name + " vừa vào phòng",
+    text: "Chọn vai trò cho người này.",
+    confirmButtonText: data.canBeOpponent ? "Cho làm đối thủ" : "Đã có đối thủ",
+    showCancelButton: data.canBeViewer,
+    cancelButtonText: "Cho làm khách xem",
+    reverseButtons: true
+  };
+
+  if (!data.canBeOpponent && data.canBeViewer) {
+    config.showConfirmButton = false;
+  }
+
+  Swal.fire(config).then(result => {
+    let role = result.value && data.canBeOpponent ? "opponent" : "viewer";
+
+    socket.emit(
+      "client_assign_room_role",
+      {
+        roomName: data.room_name,
+        userId: data.id,
+        role: role
+      },
+      function(isSuccess, errorText) {
+        if (!isSuccess && errorText) {
+          Swal.fire({
+            type: "error",
+            title: "Không thể phân quyền",
+            text: errorText
+          });
+        }
+      }
+    );
+  });
 }
 
 function getOnlineCount() {
@@ -156,8 +281,17 @@ function showListRooms(listRooms) {
   for (let d of listRooms) {
     let btnVaoPhong = "";
     let btnXoa = "";
+    // Phòng chỉ đầy khi tất cả khách (players + viewers) đã full
+    let isRoomFull = d.users_inroom >= d.max_users;
+    // Hoặc nếu không cho phép khách mời và đã có 2 người chơi
+    let isRoomFullNoViewers = !d.apceptViewer && d.players_inroom >= d.max_players;
 
-    if (d.pass) {
+    if (isRoomFull || isRoomFullNoViewers) {
+      btnVaoPhong =
+        `<button class="btn-sm btn-secondary" disabled title="Phòng đã đầy">
+                <i class="fas fa-lock"></i>
+            </button>`;
+    } else if (d.pass) {
       btnVaoPhong =
         `<button class="btn-sm btn-warning" onclick="checkVaoPhong('` +
         d.name +
@@ -194,7 +328,7 @@ function showListRooms(listRooms) {
       d.preview +
       `</i></td>
             <td><b>` +
-      d.users_inroom +
+      (d.users_inroom || 0) +
       `</b></td>
             <td> 
                 <div class="btn-group">
@@ -421,12 +555,14 @@ function openGame(trueFalse) {
 
 // ======================= Chat ======================
 function addMessage(mes, from, withTime, color, onclickFunc) {
-  Swal.fire({
-    toast: true,
-    position: "top-end",
-    text: mes,
-    timer: 3000
-  });
+  if (!window.isGameResultDialogOpen) {
+    Swal.fire({
+      toast: true,
+      position: "top-end",
+      text: mes,
+      timer: 3000
+    });
+  }
 
   let newMes = $("<p></p>");
   if (color) {

@@ -1,13 +1,6 @@
 function setupMyChatBox() {
     setupEmoji_MCB();
     showEmoji_MCB();
-
-    let from = {
-        name: 'Hoang Tran',
-        avatar: 'https://avatars3.githubusercontent.com/u/8141770'
-    }
-
-    addMessage_MCB('conv-world', from, 'Lorem ipsum dolor sit amet, consectetur adipisicing elit. Laborum molestias in inventore impedit, nemo quasi quaerat. Quas veniam, facilis et ex sequi porro. Neque, corporis delectus saepe cumque hic doloribus.');
 }
 
 function setupEmoji_MCB() {
@@ -107,12 +100,20 @@ function sendMessage_MCB() {
     let mes = inp.val();
 
     if (mes.trim() != '') {
-        let conversation = $('.conversation.active').attr('id');
+        // Emit message to server
+        if (socket && socket.connected) {
+            socket.emit('client_send_message', {
+                from: player_name,
+                mes: mes
+            });
+        }
 
+        // Add message to local UI
+        let conversation = $('.conversation.active').attr('id');
         addMessage_MCB(conversation, {
-            name: "Hoang Tran",
-            avatar: "https://avatars3.githubusercontent.com/u/8141770"
-        }, mes, (Math.random() > .5 ? 'right' : 'left'));
+            name: player_name,
+            avatar: "https://avatarhub.edu.vn/wp-content/uploads/2025/12/avatar-mac-dinh-cua-fb-4.jpg"
+        }, mes);
 
         updateFrequentlyFromLocal();
     }

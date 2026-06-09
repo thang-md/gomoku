@@ -84,7 +84,7 @@ class Room {
         this.preview = _preview;
         this.apceptViewer = _apceptViewer;
         this.maxPlayers = _maxPlayers || 2;
-        this.maxUsers = 10; // test
+        this.maxUsers = this.apceptViewer ? 20 : this.maxPlayers;
 
         this.users = [];
         this.chat = [];
@@ -98,14 +98,10 @@ class Room {
     addUser(u) {
         if (this.users.length < this.maxUsers) {
             u.setRoomName(this.name);
+            u.isViewer = u != this.owner;
+            u.isPendingRole = u != this.owner;
 
-            if (this.users.length < this.maxPlayer) {
-                this.users.push(u);
-
-            } else if (this.apceptViewer) {
-                u.isViewer = true;
-                this.users.push(u);
-            }
+            this.users.push(u);
             return true;
         }
         return false;
@@ -139,6 +135,61 @@ class Room {
 
     clearHistory() {
         this.history = [];
+    }
+
+    isFull() {
+        return this.users.length >= this.maxUsers;
+    }
+
+    getPlayers() {
+        return this.users.filter(function(user) {
+            return !user.isViewer;
+        });
+    }
+
+    getOpponent() {
+        for (var user of this.users) {
+            if (user != this.owner && !user.isViewer) {
+                return user;
+            }
+        }
+        return null;
+    }
+
+    canAddUser() {
+        return this.users.length < this.maxUsers;
+    }
+
+    canSetOpponent(user) {
+        return user == this.owner || !this.getOpponent();
+    }
+
+    setRole(user, role) {
+        if (role == 'opponent') {
+            user.isViewer = false;
+            user.isPendingRole = false;
+            return true;
+        }
+
+        if (role == 'viewer' && this.apceptViewer) {
+            user.isViewer = true;
+            user.isPendingRole = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    transferOwnerIfNeeded() {
+        if (this.users.indexOf(this.owner) >= 0) return null;
+
+        var newOwner = this.getOpponent() || this.users[0] || null;
+        if (!newOwner) return null;
+
+        this.owner = newOwner;
+        newOwner.isViewer = false;
+        newOwner.isPendingRole = false;
+        return newOwner;
     }
 }
 
@@ -179,12 +230,15 @@ function sendListRooms(somesoc) {
     var data = [];
     for (var r of list_rooms.rooms) {
         data.push({
-            "owner": r.owner,
+            "owner": r.owner.name,
             "name": r.name,
             "pass": r.pass,
             "preview": r.preview,
             "apceptViewer": r.apceptViewer,
-            "users_inroom": r.users.length
+            "users_inroom": r.users.length,
+            "players_inroom": r.getPlayers().length,
+            "max_players": r.maxPlayers,
+            "max_users": r.maxUsers
         })
     }
     if (somesoc) {
@@ -192,6 +246,71 @@ function sendListRooms(somesoc) {
     } else {
         io.sockets.emit('server_send_list_rooms', data);
     }
+}
+
+function sendRandomFirstTurn(room) {
+    if (!room) return;
+
+    var players = room.getPlayers();
+    
+    // Nếu không đủ 2 người chơi, gửi 'waiting' để họ chờ đối thủ
+    if (players.length < room.maxPlayers) {
+        for (var player of players) {
+            io.to(player.id).emit('server_send_turn', 'waiting');
+        }
+        return;
+    }
+
+    var firstPlayerIndex = Math.floor(Math.random() * players.length);
+
+    for (var i = 0; i < players.length; i++) {
+        io.to(players[i].id).emit('server_send_turn', i == firstPlayerIndex ? 'on' : 'off');
+    }
+
+    for (var viewer of room.users) {
+        if (viewer.isViewer) {
+            io.to(viewer.id).emit('server_send_turn', 'viewer');
+        }
+    }
+}
+
+function sendRoomRole(user, room) {
+    if (!user || !room) return;
+
+    var role = 'viewer';
+    if (user == room.owner) {
+        role = 'owner';
+    } else if (!user.isViewer) {
+        role = 'opponent';
+    }
+
+    io.to(user.id).emit('server_send_room_role', {
+        "role": role,
+        "isOwner": user == room.owner,
+        "isViewer": user.isViewer,
+        "room_name": room.name,
+        "owner": room.owner.name
+    });
+}
+
+function sendRolesToRoom(room) {
+    if (!room) return;
+
+    for (var user of room.users) {
+        sendRoomRole(user, room);
+    }
+}
+
+function requestOwnerAssignRole(room, user) {
+    if (!room || !user || user == room.owner) return;
+
+    io.to(room.owner.id).emit('server_request_assign_role', {
+        "id": user.id,
+        "name": user.name,
+        "room_name": room.name,
+        "canBeOpponent": !room.getOpponent(),
+        "canBeViewer": room.apceptViewer
+    });
 }
 
 function sendOnlineCount(somesoc) {
@@ -240,9 +359,39 @@ io.on("connection", function(soc) {
 
         } else {
             var room = list_rooms.findRoom(nameRoom);
-            room.removeUser(soc.caro_user);
-            soc.leave(nameRoom);
-            io.sockets.to(nameRoom).emit('server_message_disconnect', soc.caro_user.name);
+            if (room) {
+                var wasOwner = room.owner == soc.caro_user;
+                room.removeUser(soc.caro_user);
+                soc.leave(nameRoom);
+
+                if (wasOwner) {
+                    var newOwner = room.transferOwnerIfNeeded();
+                    if (newOwner) {
+                        io.sockets.to(nameRoom).emit('server_owner_changed', {
+                            "owner": newOwner.name,
+                            "room_name": nameRoom
+                        });
+                        sendRolesToRoom(room);
+                    }
+                }
+
+                // Kiểm tra số người chơi còn lại
+                var remainingPlayers = room.getPlayers();
+                if (remainingPlayers.length == 0) {
+                    // Không còn người chơi nào - xóa phòng và kick viewers
+                    io.sockets.to(nameRoom).emit('server_send_leave_room', 'Trò chơi kết thúc. Phòng được đóng lại. Bạn được đưa ra sảnh!');
+                    list_rooms.removeRoom(room);
+                    sendListRooms();
+                } else if (remainingPlayers.length == 1) {
+                    // Còn 1 người chơi - thông báo đối thủ rời và reset ván chơi
+                    room.history = []; // Clear game history
+                    io.sockets.to(nameRoom).emit('server_message_opponent_left', 'Đối thủ đã rời phòng. Ván chơi được dọn dẹp. Chờ đối thủ mới!');
+                    sendRandomFirstTurn(room);
+                } else {
+                    io.sockets.to(nameRoom).emit('server_message_disconnect', soc.caro_user.name);
+                    sendListRooms();
+                }
+            }
         }
         list_users.removeUser(soc.caro_user);
 
@@ -265,7 +414,21 @@ io.on("connection", function(soc) {
 
     soc.on('client_join_room', function(nameRoom, onSuccess) {
         var room = list_rooms.findRoom(nameRoom);
-        if (!room) return;
+        if (!room) {
+            onSuccess(false, 'Không tìm thấy phòng');
+            return;
+        }
+
+        if (!room.canAddUser()) {
+            onSuccess(false, 'Phòng đã đầy. Hãy thử phòng khác');
+            return;
+        }
+
+        // Nếu phòng không cho phép khách mời, chỉ cho chủ phòng cũ hoặc đối thủ
+        if (!room.apceptViewer && room.getOpponent() && soc.caro_user != room.owner) {
+            onSuccess(false, 'Phòng này không cho phép khách mời. Phòng đã có đối thủ rồi');
+            return;
+        }
 
         room.addUser(soc.caro_user);
 
@@ -281,6 +444,12 @@ io.on("connection", function(soc) {
         // console.log(soc.caro_user.name + " Joined room " + nameRoom);
         sendListRooms();
         onSuccess(true);
+        sendRoomRole(soc.caro_user, room);
+
+        // Nếu là người mới vào (không phải chủ phòng), yêu cầu chủ phòng gán vai trò
+        if (soc.caro_user != room.owner) {
+            requestOwnerAssignRole(room, soc.caro_user);
+        }
     })
 
     soc.on('client_leave_room', function(onSuccess) {
@@ -296,15 +465,43 @@ io.on("connection", function(soc) {
             return;
         }
 
+        var wasOwner = room.owner == soc.caro_user;
         room.removeUser(soc.caro_user);
         soc.leave(roomName);
 
-        // thông báo
-        io.sockets.emit('server_message_leave_room', {
-            "id": soc.caro_user.id,
-            "player_name": soc.caro_user.name,
-            "room_name": roomName
-        });
+        if (wasOwner) {
+            var newOwner = room.transferOwnerIfNeeded();
+            if (newOwner) {
+                io.sockets.to(roomName).emit('server_owner_changed', {
+                    "owner": newOwner.name,
+                    "room_name": roomName
+                });
+                sendRolesToRoom(room);
+            }
+        }
+
+        // Kiểm tra số người chơi còn lại
+        var remainingPlayers = room.getPlayers();
+        if (remainingPlayers.length == 0) {
+            // Không còn người chơi nào - xóa phòng và kick viewers
+            io.sockets.to(roomName).emit('server_send_leave_room', 'Trò chơi kết thúc. Phòng được đóng lại. Bạn được đưa ra sảnh!');
+            list_rooms.removeRoom(room);
+            sendListRooms();
+            onSuccess(true);
+            return;
+        } else if (remainingPlayers.length == 1) {
+            // Còn 1 người chơi - thông báo đối thủ rời và reset ván chơi
+            room.history = []; // Clear game history
+            io.sockets.to(roomName).emit('server_message_opponent_left', 'Đối thủ đã rời phòng. Ván chơi được dọn dẹp. Chờ đối thủ mới!');
+            sendRandomFirstTurn(room);
+        } else {
+            // Bình thường (nếu có > 2 người chơi - không nên xảy ra)
+            io.sockets.emit('server_message_leave_room', {
+                "id": soc.caro_user.id,
+                "player_name": soc.caro_user.name,
+                "room_name": roomName
+            });
+        }
 
         // thực hiện xóa phòng nếu không còn ai
         if (room.getUsersCount() == 0) {
@@ -324,7 +521,58 @@ io.on("connection", function(soc) {
             return;
         }
 
+        if (!room.canAddUser()) {
+            onSuccess(false, 'Phòng đã đầy');
+            return;
+        }
+
         onSuccess(inpPass == room.pass);
+    })
+
+    soc.on('client_assign_room_role', function(data, onSuccess) {
+        var room = list_rooms.findRoom(data.roomName);
+        if (!room) {
+            if (onSuccess) onSuccess(false, 'Không tìm thấy phòng');
+            return;
+        }
+
+        if (room.owner != soc.caro_user) {
+            if (onSuccess) onSuccess(false, 'Bạn không phải chủ phòng');
+            return;
+        }
+
+        var targetUser = list_users.findUserID(data.userId);
+        if (!targetUser || targetUser.getRoomName() != room.name || room.users.indexOf(targetUser) < 0) {
+            if (onSuccess) onSuccess(false, 'Người chơi không còn trong phòng');
+            return;
+        }
+
+        if (data.role == 'opponent' && !room.canSetOpponent(targetUser)) {
+            if (onSuccess) onSuccess(false, 'Phòng đã có đối thủ');
+            return;
+        }
+
+        if (!room.setRole(targetUser, data.role)) {
+            if (onSuccess) onSuccess(false, 'Không thể gán vai trò này');
+            return;
+        }
+
+        sendRolesToRoom(room);
+        sendListRooms();
+        io.sockets.to(room.name).emit('server_room_role_changed', {
+            "id": targetUser.id,
+            "name": targetUser.name,
+            "role": data.role,
+            "room_name": room.name
+        });
+
+        if (data.role == 'opponent' && room.getPlayers().length == room.maxPlayers) {
+            room.clearHistory();
+            io.sockets.to(room.name).emit('server_send_reset');
+            sendRandomFirstTurn(room);
+        }
+
+        if (onSuccess) onSuccess(true);
     })
 
     soc.on('client_close_room', function(nameRoom) {
@@ -349,12 +597,15 @@ io.on("connection", function(soc) {
         var data = [];
         for (var r of list_rooms.rooms) {
             data.push({
-                "owner": r.owner,
+                "owner": r.owner.name,
                 "name": r.name,
                 "pass": r.pass,
                 "preview": r.preview,
                 "apceptViewer": r.apceptViewer,
-                "users_inroom": r.users.length
+                "users_inroom": r.users.length,
+                "players_inroom": r.getPlayers().length,
+                "max_players": r.maxPlayers,
+                "max_users": r.maxUsers
             })
         }
         onSuccess(data);
@@ -369,6 +620,8 @@ io.on("connection", function(soc) {
     soc.on('client_send_message', function(data) {
         var roomName = soc.caro_user.getRoomName();
         if (roomName) {
+            if (soc.caro_user.isViewer) return;
+
             io.sockets.to(roomName).emit('server_send_message', {
                 'id': soc.id,
                 "from": data.from,
@@ -406,18 +659,40 @@ io.on("connection", function(soc) {
 
         var room = list_rooms.findRoom(roomName);
         if (!room) return;
+        if (soc.caro_user.isViewer) return;
+        if (room.getPlayers().length < room.maxPlayers) return;
 
         room.addHistory(data);
+        // Gửi nước đi cho tất cả (cả players và viewers)
         soc.broadcast.to(roomName).emit('server_send_clicked', data);
-        soc.broadcast.to(roomName).emit('server_send_turn', 'on');
+        // Gửi lượt cho tất cả (cả players và viewers)
+        for (var user of room.users) {
+            if (!user.isViewer && user.id != soc.id) {
+                io.to(user.id).emit('server_send_turn', 'on');
+            }
+        }
         soc.emit('server_send_turn', 'off');
+        // Viewers luôn nhận trạng thái "viewer" để không bao giờ có lượt
+        for (var viewer of room.users) {
+            if (viewer.isViewer) {
+                io.to(viewer.id).emit('server_send_turn', 'viewer');
+            }
+        }
     })
 
     soc.on('client_send_want_reset', function(name) {
         var roomName = soc.caro_user.getRoomName();
         if (!roomName) return;
+        if (soc.caro_user.isViewer) return;
 
-        soc.broadcast.to(roomName).emit('server_send_want_reset', name);
+        var room = list_rooms.findRoom(roomName);
+        if (!room) return;
+
+        for (var user of room.getPlayers()) {
+            if (user.id != soc.id) {
+                io.to(user.id).emit('server_send_want_reset', name);
+            }
+        }
     })
 
     soc.on('client_apcept_reset', function(data) {
@@ -426,20 +701,53 @@ io.on("connection", function(soc) {
 
         var room = list_rooms.findRoom(roomName);
         if (!room) return;
+        if (soc.caro_user.isViewer) return;
 
         if (data.apcepted) {
-            io.sockets.to(roomName).emit('server_send_reset');
+            // Gửi server_send_reset chỉ cho các players, không phải viewers
+            for (var player of room.getPlayers()) {
+                io.to(player.id).emit('server_send_reset', { auto: false });
+            }
+            // Thông báo cho viewers biết ván mới được tạo
+            for (var viewer of room.users) {
+                if (viewer.isViewer) {
+                    io.to(viewer.id).emit('server_send_reset', { auto: false });
+                }
+            }
             room.history = [];
+            sendRandomFirstTurn(room);
         } else {
             soc.broadcast.to(roomName).emit('server_send_deny_reset', data.from);
         }
     })
 
-    soc.on('client_send_want_undo', function(data) {
+    soc.on('client_clear_finished_game', function() {
         var roomName = soc.caro_user.getRoomName();
         if (!roomName) return;
 
-        soc.broadcast.to(roomName).emit('server_send_want_undo', data);
+        var room = list_rooms.findRoom(roomName);
+        if (!room) return;
+
+        room.clearHistory();
+        // Gửi reset signal cho tất cả (auto = true vì là tự động reset)
+        io.sockets.to(roomName).emit('server_send_reset', { auto: true });
+        // Random lượt chơi mới cho ván tiếp theo
+        sendRandomFirstTurn(room);
+    })
+
+    soc.on('client_send_want_undo', function(data) {
+        var roomName = soc.caro_user.getRoomName();
+        if (!roomName) return;
+        if (soc.caro_user.isViewer) return;
+
+        var room = list_rooms.findRoom(roomName);
+        if (!room) return;
+
+        for (var user of room.getPlayers()) {
+            if (user.id != soc.id) {
+                io.to(user.id).emit('server_send_want_undo', data);
+            }
+        }
     })
 
     soc.on('client_apcept_undo', function(data) {
@@ -448,9 +756,10 @@ io.on("connection", function(soc) {
 
         var room = list_rooms.findRoom(roomName);
         if (!room) return;
+        if (soc.caro_user.isViewer) return;
 
         if (data.apcepted) {
-            io.sockets.emit('server_send_undo', data);
+            io.sockets.to(roomName).emit('server_send_undo', data);
             for (var i = 0; i < data.soBuoc; i++) {
                 room.history.pop();
             }
@@ -463,11 +772,22 @@ io.on("connection", function(soc) {
     soc.on('client_send_win', function(name) {
         var roomName = soc.caro_user.getRoomName();
         if (!roomName) return;
+        if (soc.caro_user.isViewer) return;
 
+        var room = list_rooms.findRoom(roomName);
+        if (!room) return;
+
+        // Thông báo ai thắng cho tất cả
         io.sockets.to(roomName).emit('server_send_win', {
             "id": soc.id,
             "name": name
-        })
+        });
+
+        // Reset game và random lượt chơi mới cho ván tiếp theo (auto = true vì là tự động reset)
+        room.clearHistory();
+        // Gửi reset signal cho tất cả (cả players và viewers)
+        io.sockets.to(roomName).emit('server_send_reset', { auto: true });
+        sendRandomFirstTurn(room);
     })
 
     // ============================== END Caro =============================
